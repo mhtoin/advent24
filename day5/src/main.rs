@@ -1,3 +1,6 @@
+use std::collections::{HashMap, HashSet, VecDeque};
+
+
 // puzzle 1
 fn sum_middle_of_correct<'a>(rules: &Vec<Vec<&str>>, pages: &Vec<Vec<&'a str>>) -> usize {
     let mut sorted_pages = Vec::new();
@@ -35,43 +38,59 @@ fn check_if_sorted(rules: &Vec<Vec<&str>>, page: &Vec<&str>) -> bool {
     true
 }
 
-fn sort_pages<'a>(rules: &Vec<Vec<&str>>, pages: &Vec<Vec<&'a str>>) -> usize {
+fn sort_pages<'a>(rules: &'a Vec<Vec<&'a str>>, pages: &Vec<Vec<&'a str>>) -> usize {
     let mut incorrectly_sorted_pages = Vec::new();
 
     for page in pages.iter() {
-        let mut sorted_page = page.to_vec();
-        let mut is_incorrectly_sorted = false;
-        
-        // Keep checking until we make a complete pass with no swaps needed
-        'outer: loop {
-            let mut made_swap = false;
-            
-            for rule in rules.iter() {
-                let left_part_index = rule[0].parse::<usize>().unwrap();
-                let right_part_index = rule[1].parse::<usize>().unwrap();
+        // Build adjacency list and in-degree count for numbers in this page
+        let mut graph: HashMap<&str, Vec<&str>> = HashMap::new();
+        let mut in_degree: HashMap<&str, usize> = HashMap::new();
+        let page_numbers: HashSet<&&str> = page.iter().collect();
 
-                let left_part = sorted_page.iter().position(|&x| x == left_part_index.to_string());
-                let right_part = sorted_page.iter().position(|&x| x == right_part_index.to_string());
+        // Initialize in-degree for all numbers in the page
+        for &num in page_numbers.iter() {
+            graph.entry(*num).or_default();
+            in_degree.entry(*num).or_insert(0);
+        }
 
-                if left_part.is_some() && right_part.is_some() {
-                    if left_part.unwrap() >= right_part.unwrap() {
-                        is_incorrectly_sorted = true;
-                        made_swap = true;
-                        let temp = sorted_page[left_part.unwrap()];
-                        sorted_page[left_part.unwrap()] = sorted_page[right_part.unwrap()];
-                        sorted_page[right_part.unwrap()] = temp;
-                    }
-                }
-            }
-            
-            // If we made no swaps in this pass, the page is fully sorted
-            if !made_swap {
-                break 'outer;
+        // Build the graph from rules that apply to this page
+        for rule in rules {
+            let left = rule[0];
+            let right = rule[1];
+            if page_numbers.contains(&left) && page_numbers.contains(&right) {
+                graph.entry(left).or_default().push(right);
+                *in_degree.entry(right).or_insert(0) += 1;
             }
         }
 
-        if is_incorrectly_sorted {
-            incorrectly_sorted_pages.push(sorted_page);
+        // Find nodes with no incoming edges (in-degree = 0)
+        let mut queue: VecDeque<&str> = in_degree
+            .iter()
+            .filter(|(_, &degree)| degree == 0)
+            .map(|(&node, _)| node)
+            .collect();
+
+        let mut sorted_result = Vec::new();
+        let mut original_order = page.clone();
+
+        // Perform topological sort
+        while let Some(node) = queue.pop_front() {
+            sorted_result.push(node);
+            
+            if let Some(neighbors) = graph.get(node) {
+                for &next in neighbors {
+                    *in_degree.get_mut(next).unwrap() -= 1;
+                    if in_degree[next] == 0 {
+                        queue.push_back(next);
+                    }
+                }
+            }
+        }
+
+        // Check if the page needs sorting
+        if sorted_result.len() == page.len() && sorted_result != original_order {
+            println!("Checking page: {:?}", page);
+            incorrectly_sorted_pages.push(sorted_result);
         }
     }
 
@@ -84,6 +103,8 @@ fn sort_pages<'a>(rules: &Vec<Vec<&str>>, pages: &Vec<Vec<&'a str>>) -> usize {
 }
 
 fn main() {
+    use std::time::Instant;
+    let now = Instant::now();
     let input = std::fs::read_to_string("input.txt").unwrap();
 
     let parts: Vec<&str> = input.split("\n\n").collect();
@@ -95,11 +116,14 @@ fn main() {
         .split("\n")
         .map(|page| page.split(",").collect::<Vec<&str>>())
         .collect::<Vec<Vec<&str>>>();
-    let  sum_of_middle_pages = sum_middle_of_correct(&rules, &pages);
+    //let  sum_of_middle_pages = sum_middle_of_correct(&rules, &pages);
     let sorted_pages_sum = sort_pages(&rules, &pages);
     
-    println!("Sum of middle pages: {}", sum_of_middle_pages);
+    //println!("Sum of middle pages: {}", sum_of_middle_pages);
     
-    println!("Sum of sorted pages: {}", sorted_pages_sum);
+    println!("Sum of sorted pages: {:?}", sorted_pages_sum);
+
+    let elapsed = now.elapsed();
+    println!("Elapsed: {:.2?}", elapsed);
 }
 
